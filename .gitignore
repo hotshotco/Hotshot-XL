@@ -1,7 +1,6 @@
 .DS_Store
 venv
 .idea
-models
 __pycache__
 build
 *.egg-info
