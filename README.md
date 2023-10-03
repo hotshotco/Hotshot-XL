@@ -23,13 +23,13 @@ Hotshot-XL is an AI text-to-GIF model trained to work alongside [Stable Diffusio
 
 Hotshot-XL can generate GIFs with any fine-tuned SDXL model. This means two things:
 1. You’ll be able to make GIFs with any existing or newly fine-tuned SDXL model you may want to use.
-2. If you'd like to make GIFs of personalized subjects, you can load your own SDXL based LORAs, and not have to worry about fine-tuning Hotshot-XL. This is awesome because it’s usually much easier to find suitable images for training data than it is to find videos. It also hopefully fits into everyone's existing LORA usage/workflows :) See more [here](https://github.com/naturalsynthetics/hotshot-xl-private/blob/main/README.md#text-to-gif-with-personalized-loras).
+2. If you'd like to make GIFs of personalized subjects, you can load your own SDXL based LORAs, and not have to worry about fine-tuning Hotshot-XL. This is awesome because it’s usually much easier to find suitable images for training data than it is to find videos. It also hopefully fits into everyone's existing LORA usage/workflows :) See more [here](#text-to-gif-with-personalized-loras).
 
 Hotshot-XL is compatible with SDXL ControlNet to make GIFs in the composition/layout you’d like. See the [ControlNet](#text-to-gif-with-controlnet) section below.
 
 Hotshot-XL was trained to generate 1 second GIFs at 8 FPS.
 
-Hotshot-XL was trained on various aspect ratios. For best results with the base Hotshot-XL model, we recommend using it with an SDXL model that has been fine-tuned with 512x512 images. You can find an SDXL model we fine-tuned for 512x512 resolutions [here](https://github.com/naturalsynthetics/hotshot-xl-private/blob/main/README.md#text-to-gif-with-personalized-loras).
+Hotshot-XL was trained on various aspect ratios. For best results with the base Hotshot-XL model, we recommend using it with an SDXL model that has been fine-tuned with 512x512 images. You can find an SDXL model we fine-tuned for 512x512 resolutions [here](#text-to-gif-with-personalized-loras).
 
 # 🌐 Try It
 
@@ -185,7 +185,7 @@ Hotshot-XL was trained at the following aspect ratios; to reliably generate GIFs
 
 
 # 💪 Fine-Tuning
-The following section relates to fine-tuning the Hotshot-XL temporal model with additional text/video pairs. If you're trying to generate GIFs of personalized concepts/subjects, we'd recommend not fine-tuning Hotshot-XL, but instead training your own SDXL based LORAs and [just loading those](https://github.com/naturalsynthetics/hotshot-xl-private/blob/main/README.md#text-to-gif-with-personalized-loras).
+The following section relates to fine-tuning the Hotshot-XL temporal model with additional text/video pairs. If you're trying to generate GIFs of personalized concepts/subjects, we'd recommend not fine-tuning Hotshot-XL, but instead training your own SDXL based LORAs and [just loading those](#text-to-gif-with-personalized-loras).
 
 ### Fine-Tuning Hotshot-XL
 
