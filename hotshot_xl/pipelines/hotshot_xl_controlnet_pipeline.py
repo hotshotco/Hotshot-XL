@@ -1259,6 +1259,11 @@ class HotshotXLControlNetPipeline(
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
+        # make sure the VAE is in float32 mode, as it overflows in float16
+        if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
+            self.upcast_vae()
+            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+
         # If we do sequential model offloading, let's offload unet and controlnet
         # manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
