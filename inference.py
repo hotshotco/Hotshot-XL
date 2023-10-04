@@ -57,6 +57,7 @@ def parse_args():
     parser.add_argument("--og_height", type=int, default=1080)
     parser.add_argument("--video_length", type=int, default=8)
     parser.add_argument("--video_duration", type=int, default=1000)
+    parser.add_argument("--low_vram_mode", action="store_true")
     parser.add_argument('--scheduler', type=str, default='EulerAncestralDiscreteScheduler',
                         help='Name of the scheduler to use')
 
@@ -185,7 +186,9 @@ def main():
     elif args.autocast == 'bf16':
         autocast_type = torch.bfloat16
 
-    kwargs = {}
+    kwargs = {
+        "low_vram_mode": args.low_vram_mode
+    }
 
     if args.gif and type(pipe) is HotshotXLControlNetPipeline:
         kwargs['control_images'] = [
