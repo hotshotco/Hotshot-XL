@@ -5,3 +5,4 @@ transformers==4.34.0
 wandb==0.15.11
 moviepy==1.0.3
 imageio==2.31.5
+xformers==0.0.22
