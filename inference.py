@@ -23,7 +23,7 @@ from hotshot_xl.pipelines.hotshot_xl_controlnet_pipeline import HotshotXLControl
 from hotshot_xl.models.unet import UNet3DConditionModel
 import torchvision.transforms as transforms
 from einops import rearrange
-from hotshot_xl.utils import save_as_gif, extract_gif_frames_from_midpoint, scale_aspect_fill
+from hotshot_xl.utils import save_as_gif, save_as_mp4, extract_gif_frames_from_midpoint, scale_aspect_fill
 from torch import autocast
 from diffusers import ControlNetModel
 from contextlib import contextmanager
@@ -36,7 +36,6 @@ SCHEDULERS = {
     'default': None,
     # add more here
 }
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Hotshot-XL inference")
@@ -214,7 +213,10 @@ def main():
     images = to_pil_images(images, output_type="pil")
 
     if args.video_length > 1:
-        save_as_gif(images, args.output, duration=args.video_duration // args.video_length)
+        if args.output.split(".")[-1] == "gif":
+            save_as_gif(images, args.output, duration=args.video_duration // args.video_length)
+        else:
+            save_as_mp4(images, args.output, duration=args.video_duration // args.video_length)
     else:
         images[0].save(args.output, format='JPEG', quality=95)
 
