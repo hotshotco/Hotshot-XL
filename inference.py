@@ -26,7 +26,7 @@ from einops import rearrange
 from hotshot_xl.utils import save_as_gif, extract_gif_frames_from_midpoint, scale_aspect_fill
 from torch import autocast
 from diffusers import ControlNetModel
-
+from contextlib import contextmanager
 from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
 from diffusers.schedulers.scheduling_euler_discrete import EulerDiscreteScheduler
 
@@ -66,6 +66,12 @@ def parse_args():
     parser.add_argument("--control_guidance_start", type=float, default=0.0)
     parser.add_argument("--control_guidance_end", type=float, default=1.0)
     parser.add_argument("--gif", type=str, default=None)
+    parser.add_argument("--precision", type=str, default='f16', choices=[
+        'f16', 'f32', 'bf16'
+    ])
+    parser.add_argument("--autocast", type=str, default=None, choices=[
+        'f16', 'bf16'
+    ])
 
     return parser.parse_args()
 
@@ -85,6 +91,14 @@ def to_pil_images(video_frames: torch.Tensor, output_type='pil'):
             else:
                 images.append(video[j])
     return images
+
+@contextmanager
+def maybe_auto_cast(data_type):
+    if data_type:
+        with autocast("cuda", dtype=data_type):
+            yield
+    else:
+        yield
 
 
 def main():
@@ -112,10 +126,18 @@ def main():
 
     data_type = torch.float32
 
+    if args.precision == 'f16':
+        data_type = torch.half
+    elif args.precision == 'f32':
+        data_type = torch.float32
+    elif args.precision == 'bf16':
+        data_type = torch.bfloat16
+
     pipe_line_args = {
         "torch_dtype": data_type,
         "use_safetensors": True
     }
+
     PipelineClass = HotshotXLPipeline
 
     if control_net_model_pretrained_path:
@@ -158,19 +180,25 @@ def main():
 
     generator = torch.Generator().manual_seed(args.seed) if args.seed else None
 
-    with autocast("cuda", dtype=torch.bfloat16):
+    autocast_type = None
+    if args.autocast == 'f16':
+        autocast_type = torch.half
+    elif args.autocast == 'bf16':
+        autocast_type = torch.bfloat16
 
-        kwargs = {}
+    kwargs = {}
 
-        if args.gif and type(pipe) is HotshotXLControlNetPipeline:
-            kwargs['control_images'] = [
-                scale_aspect_fill(img, args.width, args.height).convert("RGB") \
-                for img in
-                extract_gif_frames_from_midpoint(args.gif, fps=args.video_length, target_duration=args.video_duration)
-            ]
-            kwargs['controlnet_conditioning_scale'] = args.controlnet_conditioning_scale
-            kwargs['control_guidance_start'] = args.control_guidance_start
-            kwargs['control_guidance_end'] = args.control_guidance_end
+    if args.gif and type(pipe) is HotshotXLControlNetPipeline:
+        kwargs['control_images'] = [
+            scale_aspect_fill(img, args.width, args.height).convert("RGB") \
+            for img in
+            extract_gif_frames_from_midpoint(args.gif, fps=args.video_length, target_duration=args.video_duration)
+        ]
+        kwargs['controlnet_conditioning_scale'] = args.controlnet_conditioning_scale
+        kwargs['control_guidance_start'] = args.control_guidance_start
+        kwargs['control_guidance_end'] = args.control_guidance_end
+
+    with maybe_auto_cast(autocast_type):
 
         images = pipe(args.prompt,
                       negative_prompt=args.negative_prompt,
@@ -183,12 +211,12 @@ def main():
                       generator=generator,
                       output_type="tensor", **kwargs).videos
 
-        images = to_pil_images(images, output_type="pil")
+    images = to_pil_images(images, output_type="pil")
 
-        if args.video_length > 1:
-            save_as_gif(images, args.output, duration=args.video_duration // args.video_length)
-        else:
-            images[0].save(args.output, format='JPEG', quality=95)
+    if args.video_length > 1:
+        save_as_gif(images, args.output, duration=args.video_duration // args.video_length)
+    else:
+        images[0].save(args.output, format='JPEG', quality=95)
 
 
 if __name__ == "__main__":
