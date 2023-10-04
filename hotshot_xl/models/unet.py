@@ -952,11 +952,20 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         config["mid_block_type"] = "UNetMidBlock3DCrossAttn"
 
-        from diffusers.utils import WEIGHTS_NAME
         model = cls.from_config(config)
-        model_file = os.path.join(pretrained_model_path, WEIGHTS_NAME)
 
-        if not os.path.isfile(model_file):
+        model_files = [
+            os.path.join(pretrained_model_path, 'diffusion_pytorch_model.bin'),
+            os.path.join(pretrained_model_path, 'diffusion_pytorch_model.safetensors')
+        ]
+
+        model_file = None
+
+        for fp in model_files:
+            if os.path.exists(fp):
+                model_file = fp
+
+        if not model_file:
             raise RuntimeError(f"{model_file} does not exist")
 
         state_dict = torch.load(model_file, map_location="cpu")
