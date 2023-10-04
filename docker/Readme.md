@@ -36,4 +36,6 @@ We recommend storing the weights locally on your machine. That way the weights p
     docker run -it --gpus=all --rm -v ${PWD}:/local -v C:\path\to\models:/models hotshotapp/hotshot-xl-env:latest
     ```
   
+If you want to download the models from within the container itself then you do not need to map the volumes and ` -v /path/to/models:/models` can be removed.
+
 **Note**: Ensure you have NVIDIA Docker runtime installed if you want to utilize GPU support with `--gpus=all`.
