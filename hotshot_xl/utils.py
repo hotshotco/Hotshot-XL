@@ -18,6 +18,9 @@ import PIL
 from PIL import ImageSequence, Image
 import requests
 import os
+import numpy as np
+import imageio
+
 
 def get_image(img_path) -> PIL.Image.Image:
     if img_path.startswith("http"):
@@ -41,10 +44,22 @@ def images_to_gif_bytes(images: List, duration: int = 1000) -> bytes:
 
     return gif_bytes
 
-
 def save_as_gif(images: List, file_path: str, duration: int = 1000):
     with open(file_path, "wb") as f:
         f.write(images_to_gif_bytes(images, duration))
+
+def images_to_mp4_bytes(images: List[Image.Image], duration: int = 1000) -> bytes:
+        with BytesIO() as output_buffer:
+            with imageio.get_writer(output_buffer, format='mp4', fps=1/(duration/1000)) as writer:
+                for img in images:
+                    writer.append_data(np.array(img))
+            mp4_bytes = output_buffer.getvalue()
+
+        return mp4_bytes
+
+def save_as_mp4(images: List[Image.Image], file_path: str, duration: int = 1000):
+    with open(file_path, "wb") as f:
+        f.write(images_to_mp4_bytes(images, duration))
 
 def scale_aspect_fill(img, new_width, new_height):
     new_width = int(new_width)
