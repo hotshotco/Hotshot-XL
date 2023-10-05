@@ -47,6 +47,7 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from tqdm import tqdm
 from einops import repeat, rearrange
 from diffusers.utils import deprecate, logging
+import gc
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -587,6 +588,7 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
         original_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Optional[Tuple[int, int]] = None,
+        low_vram_mode: Optional[bool] = False
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -694,6 +696,7 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
             [`~hotshot_xl.HotshotPipelineXLOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+        self.low_vram_mode = low_vram_mode
 
         if video_length > 1:
             print(f"Warning - setting num_images_per_prompt = 1 because video_length = {video_length}")
@@ -736,6 +739,10 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
+        if self.low_vram_mode:
+            self.text_encoder.to(device)
+            self.text_encoder_2.to(device)
+
         # 3. Encode input prompt
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
@@ -759,6 +766,14 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
         )
+
+        if self.low_vram_mode:
+            self.text_encoder.to(torch.device("cpu"))
+            self.text_encoder_2.to(torch.device("cpu"))
+            self.vae.to(torch.device("cpu"))
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            gc.collect()
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -866,6 +881,12 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
         #     image = self.watermark.apply_watermark(image)
 
         #image = self.image_processor.postprocess(image, output_type=output_type)
+
+        if self.low_vram_mode:
+            self.vae.to(device)
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            gc.collect()
 
         video = self.decode_latents(latents)
 
