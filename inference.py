@@ -186,9 +186,12 @@ def main():
     elif args.autocast == 'bf16':
         autocast_type = torch.bfloat16
 
-    kwargs = {
-        "low_vram_mode": args.low_vram_mode
-    }
+    if type(pipe) is HotshotXLControlNetPipeline:
+        kwargs = {}
+    else:
+        kwargs = {
+            "low_vram_mode": args.low_vram_mode
+        }
 
     if args.gif and type(pipe) is HotshotXLControlNetPipeline:
         kwargs['control_images'] = [
