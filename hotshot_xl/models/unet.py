@@ -968,7 +968,14 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if not model_file:
             raise RuntimeError(f"{model_file} does not exist")
 
-        state_dict = torch.load(model_file, map_location="cpu")
+        if model_file.split["."][-1] == "safetensors":
+            from safetensors import safe_open
+            state_dict = {}
+            with safe_open(model_file, framework="pt", device="cuda") as f:
+                for key in f.keys():
+                    state_dict[key] = f.get_tensor(key)
+        else:
+            state_dict = torch.load(model_file, map_location="cpu")
 
         model.load_state_dict(state_dict, strict=False)
 
