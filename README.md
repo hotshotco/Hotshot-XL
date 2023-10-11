@@ -5,7 +5,7 @@
   &nbsp;
   <a href="https://huggingface.co/hotshotco/Hotshot-XL">🃏 Model card</a>
   &nbsp;
-  <a href="https://discord.gg/85pqA3GG">💬 Discord</a>
+  <a href="https://discord.gg/2FjCRRxHCz">💬 Discord</a>
 </h1>
 
 <p align="center">
