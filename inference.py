@@ -147,9 +147,9 @@ def main():
 
     if args.spatial_unet_base:
 
-        unet_3d = UNet3DConditionModel.from_pretrained(args.pretrained_path, subfolder="unet").to(device)
+        unet_3d = UNet3DConditionModel.from_pretrained(args.pretrained_path, subfolder="unet", torch_dtype=data_type).to(device)
 
-        unet = UNet3DConditionModel.from_pretrained_spatial(args.spatial_unet_base).to(device)
+        unet = UNet3DConditionModel.from_pretrained_spatial(args.spatial_unet_base).to(device, dtype=data_type)
 
         temporal_layers = {}
         unet_3d_sd = unet_3d.state_dict()
