@@ -968,7 +968,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if not model_file:
             raise RuntimeError(f"{model_file} does not exist")
 
-        if model_file.split["."][-1] == "safetensors":
+        if model_file.split(".")[-1] == "safetensors":
             from safetensors import safe_open
             state_dict = {}
             with safe_open(model_file, framework="pt", device="cuda") as f:
