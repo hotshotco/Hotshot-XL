@@ -1,0 +1,66 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Hotshot-XL
+message: Personalized GIF Generation with Diffusion Models
+type: software
+authors:
+  - given-names: John
+    family-names: Mullan
+    email: john@codename.app
+    affiliation: 'Natural Synthetics, Inc.'
+  - given-names: Duncan
+    family-names: Crawbuck
+    email: duncan@codename.app
+    affiliation: 'Natural Synthetics, Inc.'
+  - given-names: Aakash
+    family-names: Sastry
+    email: aakash@codename.app
+    affiliation: 'Natural Synthetics, Inc.'
+identifiers:
+  - type: url
+    value: 'https://hotshot.co'
+    description: Hotshot Website
+repository-code: 'https://github.com/hotshotco/hotshot-xl'
+url: 'https://hotshot.co'
+repository-artifact: 'https://huggingface.co/hotshotco/Hotshot-XL'
+abstract: >-
+  Hotshot-XL is an AI text-to-GIF model trained to work
+  alongside Stable Diffusion XL. Hotshot-XL can generate
+  GIFs with any fine-tuned SDXL model. 
+
+
+  Hotshot-XL is able to make GIFs with any existing or newly
+  fine-tuned SDXL model you may want to use. If you'd like
+  to make GIFs of personalized subjects, you can load your
+  own SDXL based LORAs, and not have to worry about
+  fine-tuning Hotshot-XL. This is awesome because it’s
+  usually much easier to find suitable images for training
+  data than it is to find videos.
+
+
+  Hotshot-XL is compatible with SDXL ControlNet to make GIFs
+  in the composition/layout you’d like.
+
+
+  Hotshot-XL was trained to generate 1 second GIFs at 8 FPS.
+
+
+  Hotshot-XL was trained on various aspect ratios. To
+  achieve more efficient training + inference, we fine tuned
+  SDXL at/around 512 resolution prior to training
+  Hotshot-XL. We also publish our fine tuned SDXL spatial
+  model for use among the research community.
+keywords:
+  - ai
+  - text-to-video
+  - sdxl
+  - text-to-video-generation
+  - text-to-gif
+  - hotshot-xl
+  - hotshot
+license: Apache-2.0
+commit: 16f99c4e8cbf8cebd038a282173767d609836889
+version: 1.0.0
+date-released: '2023-10-03'
