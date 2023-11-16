@@ -245,6 +245,19 @@ There are lots of ways we are excited about improving Hotshot-XL. For example:
 
 We 💗 contributions from the open-source community! Please let us know in the issues or PRs if you're interested in working on these improvements or anything else!
 
+# 📚 BibTeX
+```
+@software{Mullan_Hotshot-XL_2023,
+  author = {Mullan, John and Crawbuck, Duncan and Sastry, Aakash},
+  license = {Apache-2.0},
+  month = oct,
+  title = {{Hotshot-XL}},
+  url = {https://github.com/hotshotco/hotshot-xl},
+  version = {1.0.0},
+  year = {2023}
+}
+```
+
 # 🙏 Acknowledgements
 Text-to-Video models are improving quickly and the development of Hotshot-XL has been greatly inspired by the following amazing works and teams:
 
