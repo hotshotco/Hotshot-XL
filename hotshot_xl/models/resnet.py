@@ -8,7 +8,7 @@
 
 import torch
 import torch.nn as nn
-from diffusers.models.resnet import Upsample2D, Downsample2D, LoRACompatibleConv
+from diffusers.models.resnet import Upsample2D, Downsample2D, LoRACompatibleConv, LoRACompatibleLinear
 from einops import rearrange
 
 
@@ -80,7 +80,7 @@ class ResnetBlock3D(nn.Module):
             else:
                 raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
 
-            self.time_emb_proj = torch.nn.Linear(temb_channels, time_emb_proj_out_channels)
+            self.time_emb_proj = LoRACompatibleLinear(temb_channels, time_emb_proj_out_channels)
         else:
             self.time_emb_proj = None
 
