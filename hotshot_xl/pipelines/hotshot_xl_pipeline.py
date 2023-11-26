@@ -981,9 +981,10 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
         latents = rearrange(latents, "b c f h w -> (b f) c h w")
         # video = self.vae.decode(latents).sample
         video = []
-        for frame_idx in tqdm(range(latents.shape[0])):
-            video.append(self.vae.decode(
-                latents[frame_idx:frame_idx+1]).sample)
+        with torch.autocast('cuda'):
+            for frame_idx in tqdm(range(latents.shape[0])):
+                video.append(self.vae.decode(
+                    latents[frame_idx:frame_idx+1]).sample)
         video = torch.cat(video)
         video = rearrange(video, "(b f) c h w -> b c f h w", f=video_length)
         video = (video / 2.0 + 0.5).clamp(0, 1)
