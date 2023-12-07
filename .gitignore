@@ -6,3 +6,5 @@ build
 *.egg-info
 wandb/*
 logs/*
+finetuned/*
+hotshot_xl/*
