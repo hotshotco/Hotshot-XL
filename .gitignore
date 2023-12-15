@@ -8,3 +8,4 @@ wandb/*
 logs/*
 finetuned/*
 hotshot_xl/*
+finetuned2/*
