@@ -29,6 +29,8 @@ from diffusers import ControlNetModel
 from contextlib import contextmanager
 from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
 from diffusers.schedulers.scheduling_euler_discrete import EulerDiscreteScheduler
+import time
+
 
 SCHEDULERS = {
     'EulerAncestralDiscreteScheduler': EulerAncestralDiscreteScheduler,
@@ -204,6 +206,7 @@ def main():
         kwargs['control_guidance_end'] = args.control_guidance_end
 
     with maybe_auto_cast(autocast_type):
+        start_time= time.time()
 
         images = pipe(args.prompt,
                       negative_prompt=args.negative_prompt,
@@ -215,8 +218,11 @@ def main():
                       video_length=args.video_length,
                       generator=generator,
                       output_type="tensor", **kwargs).videos
-
+    
+    stop_time=time.time()
     images = to_pil_images(images, output_type="pil")
+    duration =stop_time - start_time
+    print("Inference time taken: ", duration)
 
     if args.video_length > 1:
         if args.output.split(".")[-1] == "gif":
