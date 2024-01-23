@@ -252,6 +252,7 @@ def parse_args():
         "--logging_dir",
         type=str,
         default="logs",
+        choices=[ "logs", "logs2"],
         help=(
             "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
@@ -343,13 +344,24 @@ def main():
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-
-    accelerator = Accelerator(
+    
+    if args.report_to == "tensorboard":
+        accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        mixed_precision=args.mixed_precision,
+        log_with=args.report_to,
+        project_dir=args.logging_dir,
+        kwargs_handlers=[InitProcessGroupKwargs(timeout=timedelta(args.nccl_timeout))]
+        )
+    else:
+        accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         kwargs_handlers=[InitProcessGroupKwargs(timeout=timedelta(args.nccl_timeout))]
-    )
+        )
+
+
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -696,7 +708,7 @@ def main():
 
             pipe = HotshotXLPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
-                unet=accelerator.unwrap_model(unet),
+                unet=accelerator.unwrap_model(unet, keep_fp32_wrapper=True),
                 text_encoder=text_encoder,
                 text_encoder_2=text_encoder_2,
                 vae=vae,

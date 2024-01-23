@@ -35,7 +35,19 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.schedulers import (
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+    KarrasDiffusionSchedulers,
+)
+from ..utils.freeinit_utils import (
+    get_freq_filter,
+    freq_mix_3d,
+)
 from diffusers.utils import (
     is_accelerate_available,
     is_accelerate_version,
@@ -137,7 +149,15 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet3DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
+        scheduler: Union[
+            DDIMScheduler,
+            PNDMScheduler,
+            LMSDiscreteScheduler,
+            EulerDiscreteScheduler,
+            EulerAncestralDiscreteScheduler,
+            DPMSolverMultistepScheduler,
+            KarrasDiffusionSchedulers,
+        ],
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
     ):
@@ -159,6 +179,226 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
         self.watermark = None
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
+class AnimationFreeInitPipeline(HotshotXLPipeline):
+    _optional_components = []
+
+    def __init__(
+        self,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet3DConditionModel,
+        scheduler: Union[
+            DDIMScheduler,
+            PNDMScheduler,
+            LMSDiscreteScheduler,
+            EulerDiscreteScheduler,
+            EulerAncestralDiscreteScheduler,
+            DPMSolverMultistepScheduler,
+        ],
+    ):
+        super().__init__(vae, text_encoder, tokenizer, unet, scheduler)
+        self.freq_filter = None
+
+    
+    @torch.no_grad()
+    def init_filter(self, video_length, height, width, filter_params):
+        # initialize frequency filter for noise reinitialization
+        batch_size = 1
+        num_channels_latents = self.unet.in_channels
+        filter_shape = [
+            batch_size, 
+            num_channels_latents, 
+            video_length, 
+            height // self.vae_scale_factor, 
+            width // self.vae_scale_factor
+        ]
+        # self.freq_filter = get_freq_filter(filter_shape, device=self._execution_device, params=filter_params)
+        self.freq_filter = get_freq_filter(
+            filter_shape, 
+            device=self._execution_device, 
+            filter_type=filter_params.method,
+            n=filter_params.n if filter_params.method=="butterworth" else None,
+            d_s=filter_params.d_s,
+            d_t=filter_params.d_t
+        )
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        prompt: Union[str, List[str]],
+        video_length: Optional[int],
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        num_inference_steps: int = 50,
+        guidance_scale: float = 7.5,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_videos_per_prompt: Optional[int] = 1,
+        eta: float = 0.0,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "tensor",
+        return_dict: bool = True,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: Optional[int] = 1,
+        # freeinit args
+        num_iters: int = 5,
+        use_fast_sampling: bool = False,
+        save_intermediate: bool = False,
+        return_orig: bool = False,
+        save_dir: str = None,
+        save_name: str = None,
+        use_fp16: bool = False,
+        **kwargs
+    ):
+        if use_fp16:
+            print('Warning: using half percision for inferencing!')
+            self.vae.to(dtype=torch.float16)
+            self.unet.to(dtype=torch.float16)
+            self.text_encoder.to(dtype=torch.float16)
+        # Default height and width to unet
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
+
+        # Check inputs. Raise error if not correct
+        # import pdb
+        # pdb.set_trace()
+        self.check_inputs(prompt, height, width, callback_steps)
+
+        # Define call parameters
+        # batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        batch_size = 1
+        if latents is not None:
+            batch_size = latents.shape[0]
+        if isinstance(prompt, list):
+            batch_size = len(prompt)
+
+        device = self._execution_device
+        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # corresponds to doing no classifier free guidance.
+        do_classifier_free_guidance = guidance_scale > 1.0
+
+        # Encode input prompt
+        prompt = prompt if isinstance(prompt, list) else [prompt] * batch_size
+        if negative_prompt is not None:
+            negative_prompt = negative_prompt if isinstance(negative_prompt, list) else [negative_prompt] * batch_size 
+        text_embeddings = self._encode_prompt(
+            prompt, device, num_videos_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
+
+        # Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+
+        # Prepare latent variables
+        num_channels_latents = self.unet.in_channels
+        latents = self.prepare_latents(
+            batch_size * num_videos_per_prompt,
+            num_channels_latents,
+            video_length,
+            height,
+            width,
+            text_embeddings.dtype,
+            device,
+            generator,
+            latents,
+        )
+        latents_dtype = latents.dtype
+
+        # Prepare extra step kwargs.
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+
+        # Sampling with FreeInit.
+        for iter in range(num_iters):
+            #  FreeInit ------------------------------------------------------------------
+            if iter == 0:
+                initial_noise = latents.detach().clone()
+            else:
+                # 1. DDPM Forward with initial noise, get noisy latents z_T
+                # if use_fast_sampling:
+                #     current_diffuse_timestep = self.scheduler.config.num_train_timesteps / num_iters * (iter + 1) - 1
+                # else:
+                #     current_diffuse_timestep = self.scheduler.config.num_train_timesteps - 1
+                current_diffuse_timestep = self.scheduler.config.num_train_timesteps - 1 # diffuse to t=999 noise level
+                diffuse_timesteps = torch.full((batch_size,),int(current_diffuse_timestep))
+                diffuse_timesteps = diffuse_timesteps.long()
+                z_T = self.scheduler.add_noise(
+                    original_samples=latents.to(device), 
+                    noise=initial_noise.to(device), 
+                    timesteps=diffuse_timesteps.to(device)
+                )
+                # 2. create random noise z_rand for high-frequency
+                z_rand = torch.randn((batch_size * num_videos_per_prompt, num_channels_latents, video_length, height // self.vae_scale_factor, width // self.vae_scale_factor), device=device)
+                # 3. Roise Reinitialization
+                latents = freq_mix_3d(z_T.to(dtype=torch.float32), z_rand, LPF=self.freq_filter)
+                latents = latents.to(latents_dtype)
+            
+            # Coarse-to-Fine Sampling for Fast Inference (can lead to sub-optimal results)
+            if use_fast_sampling:
+                current_num_inference_steps= int(num_inference_steps / num_iters * (iter + 1))
+                self.scheduler.set_timesteps(current_num_inference_steps, device=device)
+                timesteps = self.scheduler.timesteps
+            #  --------------------------------------------------------------------------
+
+            # Denoising loop
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            with self.progress_bar(total=num_inference_steps) as progress_bar:
+                # if use_fast_sampling:
+                #     # Coarse-to-Fine Sampling for Fast Inference
+                #     current_num_inference_steps= int(num_inference_steps / num_iters * (iter + 1))
+                #     current_timesteps = timesteps[:current_num_inference_steps]
+                # else:
+                current_timesteps = timesteps
+                for i, t in enumerate(current_timesteps):
+                    # expand the latents if we are doing classifier free guidance
+                    latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                    # predict the noise residual
+                    noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample.to(dtype=latents_dtype)
+
+                    # perform guidance
+                    if do_classifier_free_guidance:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+                    # call the callback, if provided
+                    if i == len(current_timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
+                        if callback is not None and i % callback_steps == 0:
+                            callback(i, t, latents)
+            
+            # save intermediate results
+            if save_intermediate:
+                # Post-processing
+                video = self.decode_latents(latents)
+                video = torch.from_numpy(video)
+                os.makedirs(save_dir, exist_ok=True)
+                save_videos_grid(video, f"{save_dir}/{save_name}_iter{iter}.gif")
+            
+            if return_orig and iter==0:
+                orig_video = self.decode_latents(latents)
+                orig_video = torch.from_numpy(orig_video)
+
+        # Post-processing
+        video = self.decode_latents(latents)
+
+        # Convert to tensor
+        if output_type == "tensor":
+            video = torch.from_numpy(video)
+
+        if not return_dict:
+            return video
+
+        if return_orig:
+            return AnimationFreeInitPipelineOutput(videos=video, orig_videos=orig_video)
+
+
+
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -411,8 +651,22 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
             )
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+        # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs    
+    def decode_latents(self, latents):
+        video_length = latents.shape[2]
+        latents = 1 / 0.18215 * latents
+        latents = rearrange(latents, "b c f h w -> (b f) c h w")
+        # video = self.vae.decode(latents).sample
+        video = []
+        for frame_idx in tqdm(range(latents.shape[0])):
+            video.append(self.vae.decode(latents[frame_idx:frame_idx+1]).sample)
+        video = torch.cat(video)
+        video = rearrange(video, "(b f) c h w -> b c f h w", f=video_length)
+        video = (video / 2 + 0.5).clamp(0, 1)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        video = video.cpu().float().numpy()
+        return video
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -511,10 +765,22 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            rand_device = "cpu" if device.type == "mps" else device
+
+            if isinstance(generator, list):
+                shape = shape
+                # shape = (1,) + shape[1:]
+                latents = [
+                    torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype)
+                    for i in range(batch_size)
+                ]
+                latents = torch.cat(latents, dim=0).to(device)
+            else:
+                latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
         else:
+            if latents.shape != shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
@@ -569,7 +835,7 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         denoising_end: Optional[float] = None,
-        guidance_scale: float = 5.0,
+        guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         eta: float = 0.0,
@@ -579,10 +845,10 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: Optional[str] = "tensor",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
+        callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         original_size: Optional[Tuple[int, int]] = None,
@@ -744,8 +1010,11 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
             self.text_encoder_2.to(device)
 
         # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        prompt = prompt if isinstance(prompt, list) else [prompt] * batch_size
+        if negative_prompt is not None:
+            negative_prompt = negative_prompt if isinstance(negative_prompt, list) else [negative_prompt] * batch_size 
+        text_embeddings = self._encode_prompt(
+            prompt, device, num_videos_per_prompt, do_classifier_free_guidance, negative_prompt
         )
         (
             prompt_embeds,
@@ -974,22 +1243,6 @@ class HotshotXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin)
             save_function=save_function,
             safe_serialization=safe_serialization,
         )
-
-    def decode_latents(self, latents):
-        video_length = latents.shape[2]
-        latents = 1 / self.vae.config.scaling_factor * latents
-        latents = rearrange(latents, "b c f h w -> (b f) c h w")
-        # video = self.vae.decode(latents).sample
-        video = []
-        for frame_idx in tqdm(range(latents.shape[0])):
-            video.append(self.vae.decode(
-                latents[frame_idx:frame_idx+1]).sample)
-        video = torch.cat(video)
-        video = rearrange(video, "(b f) c h w -> b c f h w", f=video_length)
-        video = (video / 2.0 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
-        video = video.cpu().float().numpy()
-        return video
 
     def _remove_text_encoder_monkey_patch(self):
         self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)

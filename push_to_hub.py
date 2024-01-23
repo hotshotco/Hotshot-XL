@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+
 import sys
 
 sys.path.append("/")
@@ -29,8 +31,9 @@ from diffusers import ControlNetModel
 from contextlib import contextmanager
 from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
 from diffusers.schedulers.scheduling_euler_discrete import EulerDiscreteScheduler
-import time
 
+#Hugging Face cli Login
+os.system("huggingface-cli login --token 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")
 
 SCHEDULERS = {
     'EulerAncestralDiscreteScheduler': EulerAncestralDiscreteScheduler,
@@ -45,7 +48,7 @@ def parse_args():
     parser.add_argument("--xformers", action="store_true")
     parser.add_argument("--spatial_unet_base", type=str)
     parser.add_argument("--lora", type=str)
-    parser.add_argument("--output", type=str, required=True)
+    parser.add_argument("--output", type=str, required=False)
     parser.add_argument("--steps", type=int, default=30)
     parser.add_argument("--prompt", type=str,
                         default="a bulldog in the captains chair of a spaceship, hd, high quality")
@@ -112,9 +115,9 @@ def main():
     if args.gif and not args.control_type:
         print("warning: gif was specified but no control type was specified. gif will be ignored.")
 
-    output_dir = os.path.dirname(args.output)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+    # output_dir = os.path.dirname(args.output)
+    # if output_dir:
+    #     os.makedirs(output_dir, exist_ok=True)
 
     device = torch.device("cuda")
 
@@ -205,32 +208,30 @@ def main():
         kwargs['control_guidance_start'] = args.control_guidance_start
         kwargs['control_guidance_end'] = args.control_guidance_end
 
-    with maybe_auto_cast(autocast_type):
-        start_time= time.time()
+    pipe.push_to_hub("sanjay7178/diffscaler-XL")
 
-        images = pipe(args.prompt,
-                      negative_prompt=args.negative_prompt,
-                      width=args.width,
-                      height=args.height,
-                      original_size=(args.og_width, args.og_height),
-                      target_size=(args.target_width, args.target_height),
-                      num_inference_steps=args.steps,
-                      video_length=args.video_length,
-                      generator=generator,
-                      output_type="tensor", **kwargs).videos
-    
-    stop_time=time.time()
-    images = to_pil_images(images, output_type="pil")
-    duration =stop_time - start_time
-    print("Inference time taken: ", duration)
+    # with maybe_auto_cast(autocast_type):
 
-    if args.video_length > 1:
-        if args.output.split(".")[-1] == "gif":
-            save_as_gif(images, args.output, duration=args.video_duration // args.video_length)
-        else:
-            save_as_mp4(images, args.output, duration=args.video_duration // args.video_length)
-    else:
-        images[0].save(args.output, format='JPEG', quality=95)
+    #     images = pipe(args.prompt,
+    #                   negative_prompt=args.negative_prompt,
+    #                   width=args.width,
+    #                   height=args.height,
+    #                   original_size=(args.og_width, args.og_height),
+    #                   target_size=(args.target_width, args.target_height),
+    #                   num_inference_steps=args.steps,
+    #                   video_length=args.video_length,
+    #                   generator=generator,
+    #                   output_type="tensor", **kwargs).videos
+
+    # images = to_pil_images(images, output_type="pil")
+
+    # if args.video_length > 1:
+    #     if args.output.split(".")[-1] == "gif":
+    #         save_as_gif(images, args.output, duration=args.video_duration // args.video_length)
+    #     else:
+    #         save_as_mp4(images, args.output, duration=args.video_duration // args.video_length)
+    # else:
+    #     images[0].save(args.output, format='JPEG', quality=95)
 
 
 if __name__ == "__main__":
